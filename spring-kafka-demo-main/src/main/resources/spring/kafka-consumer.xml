@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+     http://www.springframework.org/schema/beans/spring-beans-3.0.xsd">
+
+    <bean class="org.springframework.beans.factory.config.MethodInvokingFactoryBean">
+        <property name="targetClass" value="java.lang.System"/>
+        <property name="targetMethod" value="setProperty"/>
+        <property name="arguments">
+            <props>
+                <!--设置系统变量-->
+                <!--注意: 【测试环境】需要指定测试环境的KDC地址，另外需要按照使用手册配置host-->
+                <!--【线上环境】不需要指定，默认会找到线上KDC-->
+                <prop key="java.security.krb5.kdc">TEST-JDQ-144109.bdp.jd.local</prop>
+            </props>
+        </property>
+    </bean>
+
+    <bean id="consumerProperties" class="java.util.HashMap">
+        <constructor-arg>
+            <map>
+                <!--JDQ 安全相关配置-->
+                <!--1.JDQ服务端认证方式为SASL_PLAINTEXT，需要在此设置,默认SASL_PLAINTEXT-->
+                <entry key="security.protocol" value="SASL_PLAINTEXT"/>
+                <!--2.需要走其他方式如keytab访问服务的可设置为true，需要在系统参数中设置krb5和jaas-->
+                <entry key="kafka.client.kerberos.useKeyTab" value="false"/>
+                <!--3.client配置，服务采用的kerberos认证 如果使用SDK，可以设置用户名和密码进行访问
+                    需要从客户端详情页面中的所属应用下查看(点击页面中对应的所属应用连接)
+                        username 对应 应用域名
+                        password 对应 accesskey-->
+                <entry key="kafka.client.kerberos.principal" value="username"/>
+                <entry key="kafka.client.kerberos.password" value="password"/>
+                <!--4.需要查看DEBUG日志的可以设置为true，默认为false-->
+                <entry key="kafka.client.kerberos.debug" value="false"/>
+
+                <!--Kafka配置-->
+                <!--可参考（版本0.10.0.0）http://kafka.apache.org/0101/documentation.html#newconsumerconfigs-->
+                <!--brokerlist 对应页面中TOPIC信息标签下的Brokerlist数据-->
+                <entry key="bootstrap.servers" value="brokerlist"/>
+                <!--group 对应页面中TOPIC信息标签下的 GROUPID 数据-->
+                <entry key="group.id" value="0"/>
+                <!--线上环境会验证clientId是否属于当前用户,所有这里的clientId一定要用用户申请下来的clientId
+                    另外这里的clientId也会授权提速(默认5MB/s),非授权的clientId速度为1KB/s-->
+                <entry key="client.id" value="0"/>
+                <entry key="auto.offset.reset" value="earliest"/>
+                <!--JDQ提供的Demo中序列化方式为ByteArrayDeserializer，我这里用StringSerializer-->
+                <entry key="key.deserializer" value="org.apache.kafka.common.serialization.StringSerializer"/>
+                <entry key="value.deserializer" value="org.apache.kafka.common.serialization.StringSerializer"/>
+                <!--提交位点:支持自动提交和手动提交-->
+                <entry key="enable.auto.commit" value="false"/>
+                <entry key="session.timeout.ms" value="15000"/>
+            </map>
+        </constructor-arg>
+    </bean>
+
+    <bean id="messageListenerContainer" class="org.springframework.kafka.listener.KafkaMessageListenerContainer"
+          init-method="doStart">
+        <constructor-arg ref="consumerFactory"/>
+        <constructor-arg ref="containerProperties"/>
+    </bean>
+
+    <bean id="consumerFactory" class="org.springframework.kafka.core.DefaultKafkaConsumerFactory">
+        <constructor-arg>
+            <ref bean="consumerProperties"/>
+        </constructor-arg>
+    </bean>
+
+    <bean id="containerProperties" class="org.springframework.kafka.listener.config.ContainerProperties">
+        <!--自动发布消费的topic进行消费,这里触发group management操作-->
+        <constructor-arg value="order_test_topic"/>
+        <property name="messageListener" ref="jdqMessageListener"/>
+    </bean>
+
+    <!-- Consumer监听类 -->
+    <bean id="jdqMessageListener" class="com.demo.kafka.listener.KafkaMessageListener"/>
+
+</beans>
